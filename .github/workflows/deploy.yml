@@ -1,0 +1,57 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "infra/**"
+      - "src/**"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-live
+  cancel-in-progress: false   # never interrupt an apply
+
+jobs:
+  deploy:
+    name: Plan and apply (requires approval)
+    runs-on: ubuntu-latest
+    # The `live` environment must have a required reviewer configured in
+    # GitHub Settings → Environments. The job pauses here until a human approves.
+    environment: live
+    defaults:
+      run:
+        working-directory: infra/live
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.10"
+      - name: Skip until Terraform exists
+        id: has_tf
+        run: |
+          if ls *.tf >/dev/null 2>&1; then echo "present=true" >> "$GITHUB_OUTPUT"; else echo "present=false" >> "$GITHUB_OUTPUT"; fi
+      - name: Configure AWS (OIDC, deploy role)
+        if: steps.has_tf.outputs.present == 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: init + plan + apply
+        if: steps.has_tf.outputs.present == 'true'
+        env:
+          SNOWFLAKE_ORGANIZATION_NAME: ${{ secrets.SNOWFLAKE_ORGANIZATION_NAME }}
+          SNOWFLAKE_ACCOUNT_NAME: ${{ secrets.SNOWFLAKE_ACCOUNT_NAME }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
+          SNOWFLAKE_ROLE: ${{ vars.SNOWFLAKE_ROLE }}
+        run: |
+          terraform init -input=false
+          terraform plan -input=false -no-color -out=tfplan | tee plan.txt
+          { echo '### Applied plan'; echo '```'; tail -n 60 plan.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          terraform apply -input=false tfplan

@@ -1,0 +1,6 @@
+# Every change needs approval from a code owner (enforced by branch protection on main).
+# Replace the placeholder with your GitHub username before the first push.
+*                 @jae-jang-15
+/infra/           @jae-jang-15
+/.github/         @jae-jang-15
+/docs/03-architecture/ @jae-jang-15
