@@ -23,7 +23,7 @@ The project follows the [BMAD](docs/README.md#delivery-process) lifecycle. Each 
 | Stage | Artifact | Status |
 |---|---|---|
 | 1. Brief | [Project brief](docs/01-brief/project-brief.md) | ✅ Approved (v1.1, 2026-11-04) |
-| 2. PRD | [Product requirements](docs/02-prd/) | ⏳ Not started |
+| 2. PRD | [Product requirements](docs/02-prd/prd.md) | ✅ Approved (v1.0, 2026-11-14) |
 | 3. Architecture | [Architecture + ADRs](docs/03-architecture/) | 🟡 Decisions recorded as ADRs; design doc pending |
 | 4. Development + unit tests | `src/`, `dbt/`, `tests/` | ⏳ Not started |
 | 5. Deployment | `infra/`, `.github/workflows/` | 🟡 Pipeline scaffolded; Terraform pending |

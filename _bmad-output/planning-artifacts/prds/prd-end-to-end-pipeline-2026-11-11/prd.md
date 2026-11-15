@@ -1,13 +1,13 @@
 ---
 title: "PRD — Orders Medallion Pipeline (S3 → Lambda → Snowflake → dbt)"
-status: draft
+status: final
 created: 2026-11-11
-updated: 2026-11-11
+updated: 2026-11-14
 ---
 
 # PRD: Orders Medallion Pipeline
 
-**Version:** 0.1 (draft) · **Owner:** Jae · **Inputs:** [Project brief v1.1](../../../../docs/01-brief/project-brief.md), [ADR-0001 – ADR-0009](../../../../docs/03-architecture/adr/), [sample data dictionary](../../../../data/README.md)
+**Version:** 1.0 · **Status:** Approved by the owner (Jae), 2026-11-14 · **Owner:** Jae · **Inputs:** [Project brief v1.1](../../../../docs/01-brief/project-brief.md), [ADR-0001 – ADR-0009](../../../../docs/03-architecture/adr/), [sample data dictionary](../../../../data/README.md)
 
 ## 0. Document purpose
 
@@ -16,7 +16,7 @@ This PRD turns the approved project brief into numbered, testable requirements. 
 - **Fixed inputs.** Every row in the brief's Decisions table and every accepted ADR is a constraint here, not an open question. Where a requirement depends on one, it cites the ADR.
 - **What, not how.** Requirements state observable behaviour. Mechanisms (bucket names, key layouts, IAM policies, Snowflake object definitions) belong to the architecture document; the few that surfaced during discovery are parked in [`addendum.md`](addendum.md).
 - **Vocabulary.** Terms in §3 Glossary are used exactly; no synonyms.
-- **Assumptions.** Anything inferred rather than confirmed by the owner is tagged `[ASSUMPTION]` inline and listed in §11.
+- **Assumptions.** Points first inferred during drafting were confirmed by the owner on 2026-11-14 and are listed in §11.
 
 ## 1. Vision
 
@@ -53,12 +53,13 @@ The data is deliberately trivial — one 1,000-row file — so the project can b
 
 - **Source file** — a CSV of orders with the 15 columns in the data dictionary. v1 has exactly one: `data/sample_orders.csv`.
 - **Landing area** — the S3 location where source files arrive. Arrival of a source file starts a run.
+- **Rejected area** — the S3 location where a run writes its rejected rows.
 - **Bronze copy** — a byte-for-byte copy of a source file, never modified after it is written.
 - **Run** — one processing of one source file, from landing to silver. Identified by a run ID.
 - **Repair** — a deterministic fix to a value that makes a row valid (e.g. trimming whitespace). Repaired rows continue to silver.
 - **Rejected row** — a row that fails a validation rule. It is kept, with its original values and a rejection reason, and never reaches silver.
 - **Rejection reason** — a fixed code naming the rule a rejected row failed.
-- **Duplicate** — a row whose `order_id` already appears in the same source file with a later or equal `updated_at`. Only the latest version of each order continues to silver.
+- **Duplicate** — a row whose `order_id` appears again in the same source file with a later `updated_at` (or, on equal `updated_at`, later in the file). Only the latest version of each order continues to silver.
 - **Silver dataset** — the cleaned, typed, de-duplicated output of a run, stored as Parquet in S3.
 - **Silver table** — the Snowflake table loaded from silver datasets.
 - **Gold model** — a dbt model built from the silver table for a specific analytical question. v1 has two: daily sales and customer summary.
@@ -74,8 +75,8 @@ The data is deliberately trivial — one 1,000-row file — so the project can b
 
 #### FR-1: Event-driven start
 A run starts automatically when a source file lands in the landing area; no manual trigger or schedule is needed.
-- Uploading a `.csv` object to the landing area starts exactly one run.
-- Objects outside the landing area, or without a `.csv` extension, start no run. `[ASSUMPTION]`
+- Uploading a `.csv` object to the landing area starts a run. If the event is delivered more than once, the outputs are the same as for a single run (FR-9).
+- Objects outside the landing area, or without a `.csv` extension, start no run.
 
 #### FR-2: Immutable bronze copy
 Each run writes a bronze copy of its source file before any validation.
@@ -85,8 +86,8 @@ Each run writes a bronze copy of its source file before any validation.
 
 #### FR-3: Structural check
 A run verifies the source file's structure before processing rows.
-- A file whose header does not match the 15 expected column names, in order, fails the run as a whole: no silver dataset or rejected rows are written for it, and the failure is alerted (FR-16). `[ASSUMPTION]`
-- An empty file (header only) completes with zero rows and a run summary showing zeros. `[ASSUMPTION]`
+- A file whose header does not match the 15 expected column names, in order, fails the run as a whole: no silver dataset or rejected rows are written for it, and the failure is alerted (FR-16).
+- An empty file (header only) completes with zero rows and a run summary showing zeros.
 
 ### 4.2 Cleaning, validation and de-duplication
 
@@ -116,19 +117,19 @@ A row is rejected when any rule fails, with these rejection reasons:
 | `INVALID_ORDER_DATE` | `order_date` not parseable in either accepted format |
 
 - For the sample file: exactly 40 rejected rows, 10 per reason.
-- A row failing several rules is rejected once, with all failing reasons listed (comma-separated, fixed order). `[ASSUMPTION]`
-- Other columns that cannot be parsed (`unit_price`, `updated_at`) are rejected with reasons `INVALID_UNIT_PRICE` / `INVALID_UPDATED_AT`; the sample file has none. `[ASSUMPTION]`
+- A row failing several rules is rejected once, with all failing reasons listed (comma-separated, fixed order).
+- Other columns that cannot be parsed (`unit_price`, `updated_at`) are rejected with reasons `INVALID_UNIT_PRICE` / `INVALID_UPDATED_AT`; the sample file has none.
 
 #### FR-6: De-duplication
 Within a source file, only the latest version of each order reaches silver.
-- Among rows sharing an `order_id`, the row with the latest `updated_at` is kept; the others are counted as duplicates.
+- Among rows sharing an `order_id`, the row with the latest `updated_at` is kept; on equal `updated_at`, the row appearing last in the source file is kept. The others are counted as duplicates.
 - For the sample file: exactly 50 duplicates removed.
 - De-duplication runs after validation, so rejected rows are never counted as duplicates.
 
 #### FR-7: Silver dataset
 The run writes valid, de-duplicated rows as a typed Parquet silver dataset (ADR-0003).
 - Column types: `order_date` and `updated_at` timestamps; `quantity` integer; `unit_price` decimal with 2 decimal places; all other columns strings.
-- Each row carries the run ID and source file name. `[ASSUMPTION]`
+- Each row carries the run ID and source file name.
 - For the sample file: 910 rows, `order_id` unique.
 
 #### FR-8: Rejected rows output
@@ -168,7 +169,7 @@ The silver table holds exactly one row per `order_id` per source file, from that
 #### FR-13: Daily sales
 A gold model with one row per order date, category and ship state.
 - Columns: `order_date` (date), `category`, `ship_state`, `orders` (count), `units` (sum of quantity), `gross_revenue` (sum of quantity × unit_price), `net_revenue`.
-- `net_revenue` excludes orders with status `CANCELLED` or `RETURNED`; `gross_revenue` includes all statuses. `[ASSUMPTION]`
+- `net_revenue` excludes orders with status `CANCELLED` or `RETURNED`; `gross_revenue` includes all statuses.
 - Sum of `gross_revenue` across the model equals sum of quantity × unit_price across the silver table, to the cent.
 
 #### FR-14: Customer summary
@@ -187,7 +188,7 @@ Every `dbt build` runs tests on the silver table and both gold models, and the b
 
 #### FR-16: Run summary
 Every run emits one structured log entry and writes one summary file.
-- Both contain: run ID, source file name, start and end time, status (`SUCCEEDED`/`FAILED`), rows received, rows repaired, rejected rows by reason, duplicates removed, rows written to silver.
+- Both contain: run ID, source file name, start and end time, status (`SUCCEEDED`/`FAILED`), rows received, rows repaired (rows with at least one repair), rejected rows by reason, duplicates removed, rows written to silver.
 - For the sample file, the counts match FR-5, FR-6, FR-7 and FR-10.
 
 #### FR-17: Failure alert
@@ -222,9 +223,9 @@ The whole environment can be removed.
 - **NFR-1 Cost.** Monthly AWS spend stays under $5 measured before credits, with an AWS Budgets alert at 50% and 100% (ADR-0009). Snowflake uses one X-Small warehouse with auto-suspend.
 - **NFR-2 Security.** Least-privilege IAM for every role; S3 buckets block public access and encrypt at rest; no secrets in the repository, Terraform files or logs; `detect-private-key` runs in CI.
 - **NFR-3 Reliability.** The cleaning function has a timeout; retries never produce double-counted data (FR-9, FR-12).
-- **NFR-4 Performance.** Processing the 1,000-row sample file takes under 60 seconds end to end in Lambda. `[ASSUMPTION]`
+- **NFR-4 Performance.** Processing the 1,000-row sample file takes under 60 seconds end to end in Lambda.
 - **NFR-5 Observability.** Every run is traceable by run ID across the bronze copy, silver dataset, rejected rows, run summary and silver table rows.
-- **NFR-6 Reproducibility.** A new engineer can bootstrap, deploy, run the sample file and tear down using only the repository's runbooks. `[ASSUMPTION: within two hours]`
+- **NFR-6 Reproducibility.** A new engineer can bootstrap, deploy, run the sample file and tear down using only the repository's runbooks, within two hours.
 - **NFR-7 Documentation.** Every BMAD artifact, ADR and runbook is written for an outside engineer; every requirement in this PRD is cited by at least one test or story.
 
 ## 6. Constraints and guardrails
@@ -276,7 +277,9 @@ The whole environment can be removed.
 2. Where does the run summary file live, and is it ever loaded into Snowflake? → architecture document.
 3. Should the analyst role in Snowflake be read-only on gold only, or also read silver? → architecture document.
 
-## 11. Assumptions index
+## 11. Confirmed assumptions
+
+Inferred during drafting and confirmed by the owner on 2026-11-14:
 
 - §4.1 FR-1 — non-`.csv` objects and objects outside the landing area start no run.
 - §4.1 FR-3 — a wrong header fails the whole file; an empty file succeeds with zero rows.

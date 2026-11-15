@@ -15,7 +15,7 @@ The project follows **BMAD** (Brief → PRD → Architecture → Development →
 | Folder | Contents | Status |
 |---|---|---|
 | [01-brief](01-brief/project-brief.md) | Problem, scope, success criteria, constraints, decisions | Approved v1.1 |
-| [02-prd](02-prd/) | Functional and non-functional requirements, acceptance criteria | Not started |
+| [02-prd](02-prd/prd.md) | Functional and non-functional requirements, acceptance criteria | Approved v1.0 |
 | [03-architecture](03-architecture/) | System design and [architecture decision records](03-architecture/adr/) | ADRs accepted; design doc pending |
 | [04-runbooks](04-runbooks/) | Bootstrap, deploy, operate, tear down | Not started |
 | [assets](assets/) | Diagrams referenced by the documents | — |
