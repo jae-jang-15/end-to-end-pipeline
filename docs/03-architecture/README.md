@@ -1,6 +1,10 @@
 # Architecture
 
-**Status:** Decisions accepted as ADRs; the architecture document is drafted after the PRD is approved.
+**Status:** Draft for owner approval (BMAD gate 3), 2026-11-16.
+
+- [Architecture overview](overview.md) — readable walkthrough with diagrams.
+- [Architecture spine](architecture-spine.md) — the binding rules (AD-1 – AD-12) implementers follow.
+- Working files: [`_bmad-output/planning-artifacts/architecture/architecture-end-to-end-pipeline-2026-11-15/`](../../_bmad-output/planning-artifacts/architecture/architecture-end-to-end-pipeline-2026-11-15/) (decision log, reviews).
 
 ## Decision records
 
@@ -15,11 +19,7 @@
 | [0007](adr/0007-single-environment-monorepo.md) | Single environment in a monorepo | Accepted |
 | [0008](adr/0008-dbt-core-and-orchestration.md) | dbt Core run locally; event-driven ingestion, no scheduler | Accepted |
 | [0009](adr/0009-cost-guardrails.md) | Cost guardrails: budget alert, timeouts, auto-suspend | Accepted |
-
-## Pending for the architecture document
-
-- Component diagram and IAM trust relationships (Lambda role, Snowflake storage integration role, GitHub OIDC roles)
-- S3 key conventions and event notification wiring
-- Snowflake object model (database, schemas, stage, pipe, warehouse, roles)
-- Error handling: where rejected rows are written and how they are reported
-- Open question carried from the brief: confirm the pandas script owns all cleaning and dbt only models silver → gold
+| [0010](adr/0010-reprocessing-run-scoped-history-latest-view.md) | Reprocess safely: run-scoped files, append-only history, latest-run view | Accepted |
+| [0011](adr/0011-one-s3-bucket-per-layer.md) | One S3 bucket per medallion layer | Accepted |
+| [0012](adr/0012-snowflake-layout-gold-only-analyst-access.md) | Snowflake RAW/SILVER/GOLD schemas; analysts read gold only | Accepted |
+| [0013](adr/0013-atomic-run-publish-and-run-summaries-in-snowflake.md) | Atomic run publish; run summaries loaded into Snowflake | Accepted |
