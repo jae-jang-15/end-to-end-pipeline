@@ -1,6 +1,6 @@
 # PRD: Orders Medallion Pipeline
 
-**Version:** 1.0 · **Status:** Approved by the owner (Jae), 2026-11-14 · **Owner:** Jae · **Inputs:** [Project brief v1.1](../01-brief/project-brief.md), [ADR-0001 – ADR-0009](../03-architecture/adr/), [sample data dictionary](../../data/README.md)
+**Version:** 1.1 · **Status:** Approved by the owner (Jae), 2026-11-14; v1.1 aligns terms with the architecture (2026-11-16) · **Owner:** Jae · **Inputs:** [Project brief v1.1](../01-brief/project-brief.md), [ADR-0001 – ADR-0009](../03-architecture/adr/), [sample data dictionary](../../data/README.md)
 
 *Working files (decision log, review): [`_bmad-output/planning-artifacts/prds/prd-end-to-end-pipeline-2026-11-11/`](../../_bmad-output/planning-artifacts/prds/prd-end-to-end-pipeline-2026-11-11/).*
 
@@ -56,7 +56,8 @@ The data is deliberately trivial — one 1,000-row file — so the project can b
 - **Rejection reason** — a fixed code naming the rule a rejected row failed.
 - **Duplicate** — a row whose `order_id` appears again in the same source file with a later `updated_at` (or, on equal `updated_at`, later in the file). Only the latest version of each order continues to silver.
 - **Silver dataset** — the cleaned, typed, de-duplicated output of a run, stored as Parquet in S3.
-- **Silver table** — the Snowflake table loaded from silver datasets.
+- **Silver history table** — the append-only Snowflake table that every silver dataset is loaded into (`RAW.ORDERS_HISTORY`).
+- **Silver table** — the Snowflake view analysts and dbt use (`SILVER.ORDERS`): the silver history table filtered to each source file's latest run (ADR-0010).
 - **Gold model** — a dbt model built from the silver table for a specific analytical question. v1 has two: daily sales and customer summary.
 - **Run summary** — the record of one run's counts at every step, emitted as a structured log entry and a summary file.
 - **Reconciliation** — the check that, for a run, rows received = rows in silver + rejected rows + duplicates.
@@ -153,9 +154,9 @@ A new silver dataset loads into the silver table without manual action.
 - Column types in the silver table match FR-7.
 
 #### FR-12: Load consistency
-The silver table holds exactly one row per `order_id` per source file, from that file's latest run.
+The silver table holds exactly one row per `order_id` per source file, from that file's latest run; earlier runs remain in the silver history table.
 - After re-uploading the sample file (FR-9), the silver table still holds 910 rows and `order_id` remains unique.
-- The mechanism (overwrite, merge or load-history handling) is decided in the architecture document; see addendum A1.
+- Mechanism: run-scoped silver files, the append-only silver history table and the latest-run view (ADR-0010).
 
 ### 4.4 Gold models
 
@@ -268,9 +269,11 @@ The whole environment can be removed.
 
 ## 10. Open questions
 
-1. How does the silver table stay consistent on reprocessing (FR-12): overwrite by source file, merge on `order_id`, or Snowpipe load-history handling? → architecture document.
-2. Where does the run summary file live, and is it ever loaded into Snowflake? → architecture document.
-3. Should the analyst role in Snowflake be read-only on gold only, or also read silver? → architecture document.
+All three questions were resolved in the architecture stage (2026-11-16):
+
+1. ~~How does the silver table stay consistent on reprocessing?~~ → [ADR-0010](../03-architecture/adr/0010-reprocessing-run-scoped-history-latest-view.md).
+2. ~~Where does the run summary live; is it loaded into Snowflake?~~ → silver bucket `runs/` and `RAW.RUNS`, [ADR-0013](../03-architecture/adr/0013-atomic-run-publish-and-run-summaries-in-snowflake.md).
+3. ~~Analyst access: gold only or silver too?~~ → gold only, [ADR-0012](../03-architecture/adr/0012-snowflake-layout-gold-only-analyst-access.md).
 
 ## 11. Confirmed assumptions
 
